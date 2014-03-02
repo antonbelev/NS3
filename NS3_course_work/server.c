@@ -10,12 +10,14 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #define BUFLEN 32 //TODO change that to 1024
 
 
 static void parseRequest(char *buf, int fd);
 static void returnResponse(int connfd, int error_type, char *filename, int content_type);
+static void *readRequestByConnection(void *args);
 
 int main()
 {
@@ -35,88 +37,103 @@ int main()
 	}
 
 	int backlog = 15;
+
+
 	if (listen(fd, backlog) == -1) {
 		printf("An error occurred while starting to listen for clients\n");
 	}
 
 	int connfd;
+	//int *connfd = malloc(sizeof(*connfd));
 	struct sockaddr_in cliaddr;
 	socklen_t cliaddr_len = sizeof(cliaddr); 
 
+	int pthreads_created = 0;
+	pthread_t *thread = malloc(sizeof(pthread_t)*backlog);
     //Accept multiple connections
-	while(1) {	
+	while(pthreads_created < backlog) {	
 
 		connfd = accept(fd, (struct sockaddr*) &cliaddr, &cliaddr_len);
+		printf("LAINAA S MLQKOOO tolko puti %d\n", pthreads_created);
 		if (connfd == -1) {
 			printf("An error occurred while accepting new connections\n");
 			break;
 		}
 
-		ssize_t rcount;
-		ssize_t buffer_size = BUFLEN;
-		char *buf = (char*) malloc(buffer_size * sizeof(char));			
-		ssize_t read_bytes = 0;
+		int ret = -1;
+	    ret = pthread_create(&thread[pthreads_created], NULL, readRequestByConnection, (void *)&connfd);
 
-		while(1) {
+	    if(ret != 0) {
+	        printf ("Create pthread error!\n");
+	        exit (1);
+	    }
+	    pthread_join(thread[pthreads_created], NULL);
+	    pthreads_created++;
+	}
+	// for (int i = 0; i< pthreads_created; i++){
+	// 	pthread_join(thread[i]);
+	// }
+	close(fd);
+
+}
+
+static void *readRequestByConnection(void *args) {
+	int connfd = *(int *)args;
+	ssize_t rcount;
+	ssize_t buffer_size = BUFLEN;
+	char *buf = (char*) malloc(buffer_size * sizeof(char));			
+	ssize_t read_bytes = 0;
+
+	while(1) {
 
 			//exit when read returns 0
-			//char *nextRequest = buf;
-			while ((rcount = read(connfd, buf + read_bytes, buffer_size - read_bytes)) != 0) {
-				read_bytes += rcount;
-				if (read_bytes == buffer_size) {
-					buffer_size += BUFLEN;
-					buf = (char *) realloc(buf, buffer_size);
-				}
-				if (rcount < BUFLEN)
-					break;
+		while ((rcount = read(connfd, buf + read_bytes, buffer_size - read_bytes)) != 0) {
+			read_bytes += rcount;
+			if (read_bytes == buffer_size) {
+				buffer_size += BUFLEN;
+				buf = (char *) realloc(buf, buffer_size);
+			}
+			if (rcount < BUFLEN)
+				break;
+		}
 
-				/*if (strstr (nextRequest, "\r\n\r\n")){
-					buf[read_bytes] = '\0';				  		
-			  		//For each GET request in the buffer go to the next GET and write response for that single request
-					while (nextRequest = strstr (nextRequest, "GET")) {					  
-						parseRequest(nextRequest, connfd);
-					    nextRequest += strlen("GET");
-					}
+		if (rcount == -1) {
+			printf("Server: Could not read the message\n");
+		}
+		else {
+			buf[read_bytes] = '\0';
 
-				}*/
-
-				}
-
-				if (rcount == -1) {
-					printf("Server: Could not read the message\n");
-				}
-				else {
-					buf[read_bytes] = '\0';
-
-					char *nextRequest = buf;
+			char *nextRequest = buf;
 		  		//For each GET request in the buffer go to the next GET and write response for that single request
-					while (nextRequest = strstr (nextRequest, "GET")) {					  
-						parseRequest(nextRequest, connfd);
-						nextRequest += strlen("GET");
-					}
-					close(connfd);
-					break;
-				}
+			while (nextRequest = strstr (nextRequest, "GET")) {					  
+				parseRequest(nextRequest, connfd);
+				nextRequest += strlen("GET");
 			}
 			close(connfd);
-			free(buf);
+			break;
 		}
-		close(fd);
 	}
+	close(connfd);
+	free(buf);
+	return NULL;
+}
 
-	static void parseRequest(char *buf, int fd)
-	{
-		printf("Parse Request starting...\n");
-		int content_type = 0;
+
+
+
+static void parseRequest(char *buf, int fd)
+{
+	printf("Parse Request starting...\n");
+	int content_type = 0;
 	//GET check part
-		char cwd[1024];
-		char subbuff[4];
-		memcpy(subbuff, buf, 3);
-		subbuff[3] = '\0';
-		char hostname[BUFLEN]; 
-		gethostname(hostname, sizeof hostname); 
+	char cwd[1024];
+	char subbuff[4];
+	memcpy(subbuff, buf, 3);
+	subbuff[3] = '\0';
+	char hostname[BUFLEN]; 
+	gethostname(hostname, sizeof hostname); 
 
-		if (!strcmp(subbuff,"GET") == 0){
+	if (!strcmp(subbuff,"GET") == 0){
 	    returnResponse(fd, 1, NULL, 0); // BAD REQUEST
 	    return;
 	}
