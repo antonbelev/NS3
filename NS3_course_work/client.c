@@ -1,3 +1,9 @@
+/*
+* Author: Anton Belev
+* ID: 1103816b
+* NS3 Exercise 1
+*/
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
