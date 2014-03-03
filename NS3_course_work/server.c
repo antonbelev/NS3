@@ -1,3 +1,9 @@
+/*
+* Author: Anton Belev
+* ID: 1103816b
+* NS3 Exercise 1
+*/
+
 #define _GNU_SOURCE
 
 #include <sys/types.h>
@@ -11,19 +17,23 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <errno.h>
+#include "queue.h"
+
 
 #define BUFLEN 32 //TODO change that to 1024
 
-
 static void parseRequest(char *buf, int fd);
 static void returnResponse(int connfd, int error_type, char *filename, int content_type);
-static void *readRequestByConnection(void *args);
+static void *readRequestByConnection();
+
+Queue *q;
 
 int main()
 {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
-		printf("An error occurred while creating the server socket\n");
+		printf("An error occurred while creating the server socket %d\n", errno);
 	}
 
 	struct sockaddr_in addr;
@@ -33,14 +43,14 @@ int main()
 	addr.sin_port = htons(1108);
 
 	if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == -1) {
-		printf("An error occurred while binding the server to the socket\n");
+		printf("An error occurred while binding the server to the socket %d\n", errno);
 	}
 
 	int backlog = 15;
 
 
 	if (listen(fd, backlog) == -1) {
-		printf("An error occurred while starting to listen for clients\n");
+		printf("An error occurred while starting to listen for clients %d\n", errno);
 	}
 
 	int connfd;
@@ -48,37 +58,57 @@ int main()
 	struct sockaddr_in cliaddr;
 	socklen_t cliaddr_len = sizeof(cliaddr); 
 
+	//Create queue of connection fbs, which is going to be used by the threads
+	
+	q = queue_create();
+	printf("queue_create q->size =%d...\n", q->size);
+
+	if (q == NULL)
+		printf("Queue is NULL...\n");
+
 	int pthreads_created = 0;
 	pthread_t *thread = malloc(sizeof(pthread_t)*backlog);
-    //Accept multiple connections
-	while(pthreads_created < backlog) {	
-
-		connfd = accept(fd, (struct sockaddr*) &cliaddr, &cliaddr_len);
-		printf("LAINAA S MLQKOOO tolko puti %d\n", pthreads_created);
-		if (connfd == -1) {
-			printf("An error occurred while accepting new connections\n");
-			break;
-		}
-
+	int i;
+	for (i = 0; i < backlog; i++){
 		int ret = -1;
-	    ret = pthread_create(&thread[pthreads_created], NULL, readRequestByConnection, (void *)&connfd);
+		printf("STARTING THREAD i=%d...\n", i);
+	    ret = pthread_create(&thread[i], NULL, readRequestByConnection, NULL);
 
 	    if(ret != 0) {
 	        printf ("Create pthread error!\n");
 	        exit (1);
 	    }
-	    pthread_join(thread[pthreads_created], NULL);
-	    pthreads_created++;
+
+	    //pthread_join(thread[i], NULL);
 	}
-	// for (int i = 0; i< pthreads_created; i++){
-	// 	pthread_join(thread[i]);
+
+    //Accept multiple connections
+	while(1) {	
+
+		connfd = accept(fd, (struct sockaddr*) &cliaddr, &cliaddr_len);
+
+		if (connfd == -1) {
+			printf("An error occurred while accepting new connections %d\n", errno);
+			break;
+		}
+
+		//signal here after adding connfd into the queue
+		printf("DISPACHER THREAD...\n");
+		enqueue(q,connfd);
+		printf("DISPACHER ENDED...\n\n");
+	}
+	// for (i = 0; i < backlog; i++){
+	// 	pthread_exit(thread[i]);
 	// }
 	close(fd);
 
 }
 
-static void *readRequestByConnection(void *args) {
-	int connfd = *(int *)args;
+static void *readRequestByConnection() {
+	printf("readRequestByConnection q->size =%d...\n", q->size);
+	int connfd = dequeue(q);
+	printf("readRequestByConnection connfd=%d...\n", connfd);
+	
 	ssize_t rcount;
 	ssize_t buffer_size = BUFLEN;
 	char *buf = (char*) malloc(buffer_size * sizeof(char));			
@@ -86,7 +116,7 @@ static void *readRequestByConnection(void *args) {
 
 	while(1) {
 
-			//exit when read returns 0
+		//exit when read returns 0
 		while ((rcount = read(connfd, buf + read_bytes, buffer_size - read_bytes)) != 0) {
 			read_bytes += rcount;
 			if (read_bytes == buffer_size) {
@@ -99,6 +129,7 @@ static void *readRequestByConnection(void *args) {
 
 		if (rcount == -1) {
 			printf("Server: Could not read the message\n");
+			break;
 		}
 		else {
 			buf[read_bytes] = '\0';
@@ -117,9 +148,6 @@ static void *readRequestByConnection(void *args) {
 	free(buf);
 	return NULL;
 }
-
-
-
 
 static void parseRequest(char *buf, int fd)
 {
@@ -208,6 +236,7 @@ static void parseRequest(char *buf, int fd)
 
 static void returnResponse(int connfd, int error_type, char *filename, int content_type){
 	printf("Return Response starting...content_type = %d\n", content_type);
+
 	//content_type = 0 - text/html
 	//content_type = 1 - image/jpeg
 	//content_type = 2 - image/gif
