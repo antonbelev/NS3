@@ -46,7 +46,7 @@ int main()
 		printf("An error occurred while binding the server to the socket %d\n", errno);
 	}
 
-	int backlog = 15;
+	int backlog = 10;
 
 
 	if (listen(fd, backlog) == -1) {

@@ -6,11 +6,14 @@
 
 #ifndef _QUEUE_H_INCLUDED_
 #define _QUEUE_H_INCLUDED_
+#include <pthread.h>
 
 typedef struct queue Queue;
 typedef struct node Node;
 
 struct queue{
+	pthread_mutex_t q_mutex;
+	pthread_cond_t nonempty_q;
     Node *front;
     Node *rear;
     long size;

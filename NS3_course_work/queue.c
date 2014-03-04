@@ -10,9 +10,8 @@
 #include <stdio.h>
 #include <pthread.h>
 
-pthread_mutex_t q_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t nonempty_q = PTHREAD_COND_INITIALIZER;
-
+// pthread_mutex_t q_mutex = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t nonempty_q = PTHREAD_COND_INITIALIZER;
 
 int isEmpty(Queue *q)
 {
@@ -28,6 +27,10 @@ Queue *queue_create()
     q->size = 0;
     q->front = NULL;
     q->rear = NULL;
+    pthread_mutex_t qm = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t nonempty_signal = PTHREAD_COND_INITIALIZER;
+    q->q_mutex = qm;
+    q->nonempty_q = nonempty_signal;
     return q;
 }
 
@@ -45,7 +48,7 @@ Node *node_create(int connfd)
 void enqueue(Queue *q,int connfd)
 {
     printf("enqueue connfd =%d...\n", connfd);
-    pthread_mutex_lock(&q_mutex);
+    pthread_mutex_lock(&q->q_mutex);
 
 	Node *n = node_create(connfd);
     if (q->size == 0){
@@ -58,21 +61,20 @@ void enqueue(Queue *q,int connfd)
 	q->size++;
     printf("q->size =%d...\n", q->size);
 
-    pthread_cond_signal(&nonempty_q);
-    pthread_mutex_unlock(&q_mutex);
+    pthread_cond_signal(&q->nonempty_q);
+    pthread_mutex_unlock(&q->q_mutex);
 }
 
 int dequeue(Queue *q)
 {
     printf("dequeue 0 q->size =%d...\n", q->size);
     int connfd;
-    pthread_mutex_lock(&q_mutex);		
+    pthread_mutex_lock(&q->q_mutex);		
     while (isEmpty(q)){
-        pthread_cond_wait(&nonempty_q, &q_mutex);
+        pthread_cond_wait(&q->nonempty_q, &q->q_mutex);
     }
     printf("IZLEZEEE OT WHILE AAAAAAAAAAAAAA\n");
-    pthread_mutex_unlock(&q_mutex);
-    printf("SLED UNLOCKA NA AAAAAAAAAAAAAA\n");   
+   
     printf("dequeue 1 q->size =%d...\n", q->size);
     printf("1\n");    
 	Node *front = q->front;
@@ -89,7 +91,10 @@ int dequeue(Queue *q)
     printf("dequeue 2 q->size =%d...\n", q->size);
     printf("dequeue connfd =%d...\n", connfd);
     
-    //free(front);
+    free(front->next);
+    free(front);
+    pthread_mutex_unlock(&q->q_mutex);
+    printf("SLED UNLOCKA NA AAAAAAAAAAAAAA\n");   
     
 
 	return connfd;
